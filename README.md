@@ -10,7 +10,9 @@ A Blender add-on designed to streamline the process of transferring vertex group
 
 ## Installation
 
-1. Download the `VRChat Outfit Helper` add-on script.
+## ⬇️ [Download](https://github.com/Maro-3D/VRChat-Outfit-Helper/archive/refs/heads/main.zip) ⬇️ 
+
+1. Download the `VRChat Outfit Helper` add-on script. 
 2. Open Blender and go to `Edit > Preferences > Add-ons`.
 3. Click `Install...` and select the downloaded zip file.
 4. Enable the add-on by checking the box next to `VRChat Outfit Helper`.
