@@ -24,10 +24,10 @@ def validate_active_object(context, required_type='MESH', require_vertex_groups=
         return "Active object must have vertex groups!"
     return None
 
-def validate_selection(context, num_objects=2, require_active_in_selection=True):
+def validate_selection(context, min_objects=2, require_active_in_selection=True):
     selected_objects = context.selected_objects
-    if len(selected_objects) != num_objects:
-        return f"You must select exactly {num_objects} object(s)."
+    if len(selected_objects) < min_objects:
+        return f"You must select at least {min_objects} objects."
     if require_active_in_selection:
         active_object = context.active_object
         if active_object is None or active_object not in selected_objects:
@@ -43,6 +43,8 @@ def validate_armature_modifier(obj, require_armature=None):
     if require_armature and armature_modifiers[0].object != require_armature:
         return "Armature modifier does not point to the required armature."
     return None
+
+
 
 def validate_armature_parent_and_modifier(obj):
     parent = obj.parent
@@ -110,12 +112,12 @@ def valid_interaction_mode():
 class OBJECT_OT_transfer_vertex_groups_from_active(bpy.types.Operator):
     bl_idname = "object.transfer_vertex_groups_from_active"
     bl_label = "Transfer Vertex Groups from Active Object"
-    bl_description = "Transfer vertex groups and armatures from active object to selected object"
+    bl_description = "Transfer vertex groups and armatures from active object to selected object(s)"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        message = validate_selection(context, num_objects=2)
+        message = validate_selection(context, min_objects=2)
         if message:
             cls.poll_message_set(message)
             return False
@@ -138,50 +140,50 @@ class OBJECT_OT_transfer_vertex_groups_from_active(bpy.types.Operator):
 
     def execute(self, context):
         active_object = context.active_object
+        # Get the armature that the active obj uses so the targets can be paranted to it
+        active_object_arm_mod = next(m for m in active_object.modifiers if m.type == 'ARMATURE')
+        if active_object_arm_mod and active_object_arm_mod.object:
+            active_object_armature = active_object_arm_mod.object
+
         selected_objects = context.selected_objects
-        parent = active_object.parent
+        targets = [obj for obj in selected_objects if obj != active_object]
 
-        non_active_object = next(obj for obj in selected_objects if obj != active_object)
+        for target in targets:
+            # Ensure single armature modifier on each target
+            success = ensure_single_armature_modifier(target, active_object.parent)
+            if not success:
+                self.report({'ERROR'}, f"'{target.name}' has multiple armature modifiers. Only one is allowed.")
+                return {'CANCELLED'}
 
-        success = ensure_single_armature_modifier(non_active_object, parent)
-        if not success:
-            self.report(
-                {'ERROR'},
-                f"'{non_active_object.name}' has multiple armature modifiers. Only one is allowed."
+            # Set parent for each target 
+            target.parent = active_object_armature
+            target.matrix_parent_inverse = active_object.parent.matrix_world.inverted()
+
+            # Transfer vertex groups to each target
+            bpy.ops.object.select_all(action='DESELECT')
+            active_object.select_set(True)
+            target.select_set(True)
+            context.view_layer.objects.active = active_object
+
+            bpy.ops.object.data_transfer(
+                data_type='VGROUP_WEIGHTS',
+                use_auto_transform=False,
+                use_object_transform=True,
+                layers_select_src='ALL',
+                layers_select_dst='NAME'
             )
-            return {'CANCELLED'}
-
-        non_active_object.parent = parent
-        non_active_object.matrix_parent_inverse = parent.matrix_world.inverted()
-
+        
+        self.report({'INFO'}, f"Vertex groups transferred from '{active_object.name}' to {len(targets)} objects")
+        
+        # Deselect all to avoid wierd selection state from previsouse operations
         bpy.ops.object.select_all(action='DESELECT')
-        active_object.select_set(True)
-        non_active_object.select_set(True)
-        context.view_layer.objects.active = active_object
-
-        bpy.ops.object.data_transfer(
-            data_type='VGROUP_WEIGHTS',
-            use_auto_transform=False,
-            use_object_transform=True,
-            layers_select_src='ALL',
-            layers_select_dst='NAME'
-        )
-
-        self.report(
-            {'INFO'},
-            f"Vertex groups transferred from '{active_object.name}' to '{non_active_object.name}'"
-        )
-
-        bpy.ops.object.select_all(action='DESELECT')
-        non_active_object.select_set(True)
-        context.view_layer.objects.active = non_active_object
 
         return {'FINISHED'}
 
 class OBJECT_OT_delete_unused_vertex_groups(bpy.types.Operator):
     bl_idname = "object.delete_unused_vertex_groups"
     bl_label = "Delete Unused Vertex Groups"
-    bl_description = "Remove all vertex groups from the active object that have no weight assignments."
+    bl_description = "Remove all vertex groups from the active object that have no weight assignments"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
