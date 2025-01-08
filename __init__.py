@@ -1,5 +1,5 @@
 bl_info = {
-    "name": "VRChat Outfit Helper",
+    "name": "Vertex Group Assistant",
     "description": "Transfer vertex groups and armatures from active to selected.",
     "author": "Marek Hanzelka",
     "version": (1, 0, 1),
@@ -24,10 +24,14 @@ def validate_active_object(context, required_type='MESH', require_vertex_groups=
         return "Active object must have vertex groups!"
     return None
 
-def validate_selection(context, min_objects=2, require_active_in_selection=True):
+def validate_selection(context, min_objects=2, require_active_in_selection=True, max_objects=None):
     selected_objects = context.selected_objects
     if len(selected_objects) < min_objects:
         return f"You must select at least {min_objects} objects."
+    
+    if max_objects is not None and len(selected_objects) > max_objects:
+        return f"You can select a maximum of {max_objects} objects."
+
     if require_active_in_selection:
         active_object = context.active_object
         if active_object is None or active_object not in selected_objects:
@@ -146,7 +150,7 @@ class OBJECT_OT_transfer_vertex_groups_from_active(bpy.types.Operator):
             active_object_armature = active_object_arm_mod.object
 
         selected_objects = context.selected_objects
-        targets = [obj for obj in selected_objects if obj != active_object]
+        targets = [obj for obj in selected_objects if obj != active_object and obj.type == 'MESH']
 
         for target in targets:
             # Ensure single armature modifier on each target
@@ -178,6 +182,10 @@ class OBJECT_OT_transfer_vertex_groups_from_active(bpy.types.Operator):
         # Deselect all to avoid wierd selection state from previsouse operations
         bpy.ops.object.select_all(action='DESELECT')
 
+        # Reselect the objects in the list
+        for obj in targets:
+            obj.select_set(True)
+
         return {'FINISHED'}
 
 class OBJECT_OT_delete_unused_vertex_groups(bpy.types.Operator):
@@ -206,11 +214,24 @@ class OBJECT_OT_delete_unused_vertex_groups(bpy.types.Operator):
         return True
 
     def execute(self, context):
-        obj = context.object
-        removed_groups = delete_zero_weight_vertex_groups(obj)
+        # Filter to only mesh objects
+        current_selection = [obj for obj in bpy.context.selected_objects if obj.type == 'MESH']
+        removed_groups = []
 
+        # Process each mesh object
+        for obj in current_selection:
+            removed_groups += delete_zero_weight_vertex_groups(obj)
+
+        # Gather reporting info
+        num_removed_groups = len(removed_groups)
+        num_selected_obj = len(current_selection)
+
+        # Provide user feedback
         if removed_groups:
-            self.report({'INFO'}, f"Removed {len(removed_groups)} zero-weight vertex groups!")
+            if num_selected_obj == 1:
+                self.report({'INFO'}, f"Removed {num_removed_groups} zero-weight vertex groups from {current_selection[0].name}!")
+            else:
+                self.report({'INFO'}, f"Removed {num_removed_groups} zero-weight vertex groups from {num_selected_obj} objects!")
         else:
             self.report({'INFO'}, "No zero-weight vertex groups found.")
 
@@ -220,7 +241,8 @@ class OBJECT_OT_confirm_delete_unused_bones(bpy.types.Operator):
     bl_idname = "object.confirm_delete_unused_bones"
     bl_label = "Delete Unused Bones"
     bl_description = "Delete all bones that do not have a corresponding vertex group"
-
+    bl_options = {'REGISTER', 'UNDO'}
+    
     duplicate_armature: bpy.props.BoolProperty(
         name="Duplicate Armature",
         description="Duplicate the armature before deleting bones",
@@ -229,6 +251,11 @@ class OBJECT_OT_confirm_delete_unused_bones(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
+        message = validate_selection(context, min_objects=1,require_active_in_selection=True,max_objects=1)
+        if message:
+            cls.poll_message_set(message)
+            return False
+
         message = validate_active_object(context, required_type='MESH', require_vertex_groups=True)
         if message:
             cls.poll_message_set(message)
@@ -300,7 +327,7 @@ class OBJECT_OT_confirm_delete_unused_bones(bpy.types.Operator):
 
 # Menu Class and Drawing Functions
 class OBJECT_MT_vertex_tools(bpy.types.Menu):
-    bl_label = "VRChat Outfit Helper"
+    bl_label = "Vertex Group Assistant"
     bl_idname = "OBJECT_MT_vertex_tools"
 
     def draw(self, context):
