@@ -10,7 +10,7 @@ A Blender add-on designed to streamline the process of transferring vertex group
 
 ## Installation
 
-## ⬇️ [Download](https://github.com/Maro-3D/VRChat-Outfit-Helper/archive/refs/heads/main.zip) ⬇️ 
+## ⬇️ [Download](https://github.com/Maro-3D/Vertex-Group-Assistant/archive/refs/heads/main.zip) ⬇️ 
 
 1. Download the `Vertex Group Assistant` add-on script. 
 2. Open Blender and go to `Edit > Preferences > Add-ons`.
